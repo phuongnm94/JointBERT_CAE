@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers import BertConfig, AdamW, get_linear_schedule_with_warmup
+from torch.utils.tensorboard import SummaryWriter
+import pickle
 
 from utils import MODEL_CLASSES, compute_metrics, get_intent_labels, get_slot_by2task_labels, get_slot_labels
 
@@ -18,7 +20,9 @@ class Trainer(object):
         self.train_dataset = train_dataset
         self.dev_dataset = dev_dataset
         self.test_dataset = test_dataset
-
+        
+        self.writer = SummaryWriter(log_dir=self.args.model_dir+"/tensorboard/")
+        
         self.intent_label_lst = get_intent_labels(args)
         org_slot_labels = get_slot_labels(args)
         if "slotby2task" in self.args.task:
@@ -109,7 +113,7 @@ class Trainer(object):
                     global_step += 1
 
                     if self.args.logging_steps > 0 and global_step % self.args.logging_steps == 0:
-                        self.evaluate("dev")
+                        self.evaluate("dev", global_step)
 
                     if self.args.save_steps > 0 and global_step % self.args.save_steps == 0:
                         self.save_model()
@@ -121,10 +125,10 @@ class Trainer(object):
             if 0 < self.args.max_steps < global_step:
                 train_iterator.close()
                 break
-
+        
         return global_step, tr_loss / global_step
 
-    def evaluate(self, mode):
+    def evaluate(self, mode, global_step=None):
         if mode == 'test':
             dataset = self.test_dataset
         elif mode == 'dev':
@@ -237,13 +241,19 @@ class Trainer(object):
 
         total_result = compute_metrics(intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list)
         results.update(total_result)
-        import pickle
-        pickle.dump((intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list, total_result), 
-                open('{}/{}.output.pkl'.format(self.args.model_dir, mode), 'wb'))
+        
+        # only dump pickle result when not in training process
+        if  global_step is None or global_step==0:
+            pickle.dump((intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list, total_result), 
+                    open('{}/{}.output.pkl'.format(self.args.model_dir, mode), 'wb'))
 
         logger.info("***** Eval results *****")
         for key in sorted(results.keys()):
             logger.info("  %s = %s", key, str(results[key]))
+        
+        if not self.args.no_tensorboard and global_step is not None:
+            for key in sorted(results.keys()):
+                self.writer.add_scalar(f"{mode}/{key}", results[key], global_step)
 
         return results
 

@@ -344,7 +344,7 @@ def load_and_cache_examples(args, tokenizer, mode):
         features = convert_examples_to_features(examples, args.max_seq_len, tokenizer,
                                                 pad_token_label_id=pad_token_label_id, 
                                                 slot_by2task=using_seqlabelby2task,
-                                                start_object_id=processor.get_start_object_slot_lb_id())
+                                                start_object_id=processor.get_start_object_slot_lb_id() if using_seqlabelby2task else None)
         logger.info("Saving features into cached file %s", cached_features_file)
         torch.save(features, cached_features_file)
 

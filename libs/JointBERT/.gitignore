@@ -1,4 +1,7 @@
 .history/
+data/atis_slotby2task
+data/snips_slotby2task
+**/*models/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -6,7 +6,7 @@ from .module import IntentClassifier, SlotClassifier
 
 
 class JointBERT(BertPreTrainedModel):
-    def __init__(self, config, args, intent_label_lst, slot_label_lst):
+    def __init__(self, config, args, intent_label_lst, slot_label_lst, **kwargs):
         super(JointBERT, self).__init__(config)
         self.args = args
         self.num_intent_labels = len(intent_label_lst)
@@ -19,7 +19,7 @@ class JointBERT(BertPreTrainedModel):
         if args.use_crf:
             self.crf = CRF(num_tags=self.num_slot_labels, batch_first=True)
 
-    def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids):
+    def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, **kwargs):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
                             token_type_ids=token_type_ids)  # sequence_output, pooled_output, (hidden_states), (attentions)
         sequence_output = outputs[0]

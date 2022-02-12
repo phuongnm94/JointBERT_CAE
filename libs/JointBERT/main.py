@@ -21,8 +21,9 @@ def main(args):
 
     if args.do_eval:
         trainer.load_model()
-        trainer.evaluate("test")
+        trainer.evaluate("test", 0)
 
+    trainer.writer.flush()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -51,6 +52,7 @@ if __name__ == '__main__':
     parser.add_argument("--dropout_rate", default=0.1, type=float, help="Dropout for fully-connected layers")
 
     parser.add_argument('--logging_steps', type=int, default=200, help="Log every X updates steps.")
+    parser.add_argument("--no_tensorboard", default=False, action="store_true", help="Do not log by tensorboard.")
     parser.add_argument('--save_steps', type=int, default=200, help="Save checkpoint every X updates steps.")
 
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")

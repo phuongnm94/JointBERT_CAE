@@ -6,12 +6,12 @@ DATA_ID=atis
 cd libs/JointBERT
 
 EP=10
-MODEL_DIR="${DATA_ID}_models/ep$EP-dev-slot_by2task"
+MODEL_DIR="${DATA_ID}_models/ep$EP"
 mkdir $MODEL_DIR
 cp $ME $MODEL_DIR
 
-python3 main.py --task ${DATA_ID}_slotby2task \
-                  --model_type bertseqlabelby2task \
+python3 main.py --task ${DATA_ID} \
+                  --model_type bert \
                   --model_dir $MODEL_DIR \
                   --do_train --do_eval \
                   --num_train_epochs $EP |& tee $MODEL_DIR/train.log
