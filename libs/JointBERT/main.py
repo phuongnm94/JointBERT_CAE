@@ -16,12 +16,13 @@ def main(args):
 
     trainer = Trainer(args, train_dataset, dev_dataset, test_dataset)
 
+    global_step = 0
     if args.do_train:
-        trainer.train()
+        global_step, _ = trainer.train()
 
     if args.do_eval:
         trainer.load_model()
-        trainer.evaluate("test", 0)
+        trainer.evaluate("test", global_step)
 
     trainer.writer.flush()
 
@@ -35,6 +36,7 @@ if __name__ == '__main__':
     parser.add_argument("--slot_label_file", default="slot_label.txt", type=str, help="Slot Label file")
 
     parser.add_argument("--model_type", default="bert", type=str, help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+    parser.add_argument("--combine_local_context", default=False, action="store_true", help="combine local context")
 
     parser.add_argument('--seed', type=int, default=1234, help="random seed for initialization")
     parser.add_argument("--train_batch_size", default=32, type=int, help="Batch size for training.")

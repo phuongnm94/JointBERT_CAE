@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from transformers.modeling_bert import BertPreTrainedModel, BertModel, BertConfig
 from torchcrf import CRF
-from .module import IntentClassifier, SlotClassifier
+from .module import BridgeIntentEntities, IntentClassifier, NgramMLP, SlotClassifier, NgramLSTM
 
 
 class JointBERT(BertPreTrainedModel):
@@ -15,6 +15,8 @@ class JointBERT(BertPreTrainedModel):
 
         self.intent_classifier = IntentClassifier(config.hidden_size, self.num_intent_labels, args.dropout_rate)
         self.slot_classifier = SlotClassifier(config.hidden_size, self.num_slot_labels, args.dropout_rate)
+        if args.combine_local_context:
+            self.local_context = NgramMLP(4, config.hidden_size)
 
         if args.use_crf:
             self.crf = CRF(num_tags=self.num_slot_labels, batch_first=True)
@@ -26,7 +28,13 @@ class JointBERT(BertPreTrainedModel):
         pooled_output = outputs[1]  # [CLS]
 
         intent_logits = self.intent_classifier(pooled_output)
-        slot_logits = self.slot_classifier(sequence_output)
+        if self.args.combine_local_context:
+            tmp = sequence_output.clone()[:, 1:, :]
+            sequence_output = sequence_output.clone()
+            sequence_output[:, 1:, :] =  self.local_context(tmp)
+            slot_logits = self.slot_classifier(sequence_output)
+        else:
+            slot_logits = self.slot_classifier(sequence_output)
 
         total_loss = 0
         # 1. Intent Softmax
@@ -67,6 +75,8 @@ class JointBERTSlotby2task(JointBERT):
         super(JointBERTSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
         self.num_slot_type_labels = len(slot_type_label_list)
         self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
+        if args.combine_local_context:
+            self.local_context = NgramLSTM(4, config.hidden_size, args.dropout_rate)
 
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, slot_type_labels_ids):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
@@ -76,7 +86,13 @@ class JointBERTSlotby2task(JointBERT):
 
         intent_logits = self.intent_classifier(pooled_output)
         slot_logits = self.slot_classifier(sequence_output)
-        slot_type_logits = self.slot_type_classifier(sequence_output)
+        if self.args.combine_local_context:
+            tmp = sequence_output.clone()[:, 1:, :]
+            sequence_output = sequence_output.clone()
+            sequence_output[:, 1:, :] = 0.5*(tmp + self.local_context(tmp)) 
+            slot_type_logits = self.slot_type_classifier(sequence_output)
+        else:
+            slot_type_logits = self.slot_type_classifier(sequence_output)
 
         total_loss = 0
         # 1. Intent Softmax

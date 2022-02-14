@@ -114,6 +114,7 @@ class Trainer(object):
 
                     if self.args.logging_steps > 0 and global_step % self.args.logging_steps == 0:
                         self.evaluate("dev", global_step)
+                        self.evaluate("test", global_step)
 
                     if self.args.save_steps > 0 and global_step % self.args.save_steps == 0:
                         self.save_model()
