@@ -23,16 +23,20 @@ def load_data_(args, mode):
 
     return tokenizer, intent_list, train_dataset, dev_dataset, test_dataset
  
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger()
 
 if __name__=="__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_dir", default=None, required=True, type=str, help="Path to save, load model")
- 
+    parser.add_argument("--mode", default='test',  type=str, help="mode is selected in {dev, test}")
+
     # args = parser.parse_args([e for e in " --task atis --model_type bert --model_dir atis_models/ep30  --do_eval".split() if len(e) > 0])
     args_err_analyze = parser.parse_args()
+    mode = args_err_analyze.mode
+
+    logging.basicConfig(level=logging.INFO, filename='{}/{}.err.log'.format(args_err_analyze.model_dir, mode),
+                            filemode='w',)
 
     args_model = torch.load(f"{args_err_analyze.model_dir}/training_args.bin")
     if not hasattr(args_model, 'combine_local_context'):
@@ -42,13 +46,13 @@ if __name__=="__main__":
     args_model.model_dir = args_err_analyze.model_dir
         
     
-    mode = "dev"
     tokenizer, intent_list, train_dataset, dev_dataset, test_dataset = load_data_(args_model, mode)
     data_checking = test_dataset if mode == "test" else dev_dataset
 
     intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list, total_result = \
         pickle.load(open(f"{args_err_analyze.model_dir}/{mode}.output.pkl", 'rb'))
-    total_result = compute_metrics(intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list) 
+    total_result = compute_metrics(intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list, 
+                    classification_detail_report=True, logger=logger) 
 
     # Get the intent comparison result
     intent_result = (intent_preds == out_intent_label_ids)
@@ -68,8 +72,7 @@ if __name__=="__main__":
     sementic_acc = np.multiply(intent_result, slot_result)
     false_sample_idx = [i for i, e in enumerate(sementic_acc) if not e]
 
-    logging.basicConfig(level=logging.INFO, filename='{}/{}.err.log'.format(args_err_analyze.model_dir, mode),
-                            filemode='w',)
+
 
     for idx in false_sample_idx:
         logger.info("=======")

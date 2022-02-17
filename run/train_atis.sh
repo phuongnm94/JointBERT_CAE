@@ -4,7 +4,7 @@ ME="$ME/$ME_NAME"
 
 cd libs/JointBERT
 
-EP=40
+EP=10
 MODEL_DIR="atis_models/ep$EP"
 mkdir $MODEL_DIR
 cp $ME $MODEL_DIR

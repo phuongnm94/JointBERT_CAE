@@ -155,8 +155,11 @@ class JointProcessorSlotBy2task(JointProcessor):
                 if s.startswith("B-") or s.startswith("I-"):
                     new_s = "{}object".format(s[:2])
                     new_s_type = s[2:] 
+                    if s.startswith("B-"):
+                        slot_type_labels.append(self.slot_type_labels.index(new_s_type) if new_s_type in self.slot_type_labels else self.slot_type_labels.index("UNK"))
                 slot_labels.append(self.slot_labels.index(new_s) if new_s in self.slot_labels else self.slot_labels.index("UNK"))
-                slot_type_labels.append(self.slot_type_labels.index(new_s_type) if new_s_type in self.slot_type_labels else self.slot_type_labels.index("UNK"))
+                if not s.startswith("B-"):
+                    slot_type_labels.append(self.slot_type_labels.index('PAD'))
 
             assert len(words) == len(slot_labels)
             examples.append(InputExample(guid=guid, words=words, intent_label=intent_label, slot_labels=slot_labels, slot_type_labels=slot_type_labels))
@@ -164,9 +167,11 @@ class JointProcessorSlotBy2task(JointProcessor):
 
 processors = {
     "atis": JointProcessor,
+    "snips": JointProcessor,
+    "conll2003": JointProcessor,
     "atis_slotby2task": JointProcessorSlotBy2task,
     "snips_slotby2task": JointProcessorSlotBy2task,
-    "snips": JointProcessor
+    "conll2003_slotby2task": JointProcessorSlotBy2task,
 }
 
 def _generate_type_slot_labels_ids(example, max_seq_len, tokenizer,
@@ -320,7 +325,7 @@ def load_and_cache_examples(args, tokenizer, mode):
             args.task,
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             args.max_seq_len,
-            "_slotby2task" if using_seqlabelby2task else ""
+            "_slotby2taskV2" if using_seqlabelby2task else ""
         )
     ) 
 

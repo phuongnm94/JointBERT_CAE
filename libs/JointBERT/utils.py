@@ -4,7 +4,7 @@ import logging
 
 import torch
 import numpy as np
-from seqeval.metrics import precision_score, recall_score, f1_score
+from seqeval.metrics import precision_score, recall_score, f1_score, classification_report
 
 from transformers import BertConfig, DistilBertConfig, AlbertConfig
 from transformers import BertTokenizer, DistilBertTokenizer, AlbertTokenizer
@@ -13,12 +13,17 @@ from model import JointBERT, JointDistilBERT, JointAlbert, JointBERTSlotby2task
 
 MODEL_CLASSES = {
     'bert': (BertConfig, JointBERT, BertTokenizer),
+    'bertcased': (BertConfig, JointBERT, BertTokenizer),
+    'bertcased-seqlabelby2task': (BertConfig, JointBERTSlotby2task, BertTokenizer),
+    'bertseqlabelby2task': (BertConfig, JointBERTSlotby2task, BertTokenizer),
     'bertseqlabelby2task': (BertConfig, JointBERTSlotby2task, BertTokenizer),
     'distilbert': (DistilBertConfig, JointDistilBERT, DistilBertTokenizer),
     'albert': (AlbertConfig, JointAlbert, AlbertTokenizer)
 }
 
 MODEL_PATH_MAP = {
+    'bertcased': 'bert-base-cased',
+    'bertcased-seqlabelby2task': 'bert-base-cased',
     'bert': 'bert-base-uncased',
     'bertseqlabelby2task': 'bert-base-uncased',
     'distilbert': 'distilbert-base-uncased',
@@ -63,13 +68,15 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def compute_metrics(intent_preds, intent_labels, slot_preds, slot_labels):
+def compute_metrics(intent_preds, intent_labels, slot_preds, slot_labels, classification_detail_report=False, logger=None):
     assert len(intent_preds) == len(intent_labels) == len(slot_preds) == len(slot_labels)
     results = {}
     intent_result = get_intent_acc(intent_preds, intent_labels)
     slot_result = get_slot_metrics(slot_preds, slot_labels)
+    if classification_detail_report:
+        logger.info(classification_report(slot_labels, slot_preds, digits=4))
     sementic_result = get_sentence_frame_acc(intent_preds, intent_labels, slot_preds, slot_labels)
-
+    
     results.update(intent_result)
     results.update(slot_result)
     results.update(sementic_result)

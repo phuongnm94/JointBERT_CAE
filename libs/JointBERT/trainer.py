@@ -129,6 +129,29 @@ class Trainer(object):
         
         return global_step, tr_loss / global_step
 
+    @staticmethod    
+    def recover_slot_labelby2task(slot_labels, slot_type_labels, slot_label_map, slot_type_label_map, slot_gold_labels):
+        start_object_id = [k for k, v in slot_label_map.items() if v == 'B-object'][0]
+        in_object_id = [k for k, v in slot_label_map.items() if v == 'I-object'][0]
+        out_object_id = [k for k, v in slot_label_map.items() if v == 'O'][0]
+        pad_id = [k for k, v in slot_label_map.items() if v == 'PAD'][0]
+        out_object_type_id = [k for k, v in slot_type_label_map.items() if v == 'O'][0]
+
+        for i in range(slot_labels.shape[0]):
+            for j in range(slot_labels.shape[1]):
+                if slot_labels[i, j] == start_object_id:
+                    for k in range(j+1, slot_labels.shape[1]):
+                        if slot_gold_labels[i, k] == pad_id: # skeep label of subwords
+                            continue
+                        if slot_labels[i, k] == in_object_id:
+                            slot_type_labels[i, k] = slot_type_labels[i, j] # slot_type_labels[i, j] => cur_obj_id
+                        else:
+                            break
+                elif slot_labels[i, j] == out_object_id:
+                    slot_type_labels[i, j] = out_object_type_id
+
+        return slot_type_labels
+
     def evaluate(self, mode, global_step=None):
         if mode == 'test':
             dataset = self.test_dataset
@@ -233,7 +256,9 @@ class Trainer(object):
             slot_type_label_map = {i: label for i, label in enumerate(self.slot_type_label_lst)}
             out_slot_label_list = [[] for _ in range(out_slot_labels_ids.shape[0])]
             slot_preds_list = [[] for _ in range(out_slot_labels_ids.shape[0])]
-
+            
+            out_slot_type_labels_ids = self.recover_slot_labelby2task(out_slot_labels_ids, out_slot_type_labels_ids, slot_label_map, slot_type_label_map, out_slot_labels_ids)
+            slot_type_preds = self.recover_slot_labelby2task(slot_preds, slot_type_preds, slot_label_map, slot_type_label_map, out_slot_labels_ids)
             for i in range(out_slot_labels_ids.shape[0]):
                 for j in range(out_slot_labels_ids.shape[1]):
                     if out_slot_labels_ids[i, j] != self.pad_token_label_id:

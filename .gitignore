@@ -4,6 +4,7 @@ env*/
 **/*_models/
 libs/JointBERT/data/atis_slotby2task
 libs/JointBERT/data/snips_slotby2task
+libs/JointBERT/data/conll2003_slotby2task
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
