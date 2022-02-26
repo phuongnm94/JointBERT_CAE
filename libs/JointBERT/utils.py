@@ -6,13 +6,17 @@ import torch
 import numpy as np
 from seqeval.metrics import precision_score, recall_score, f1_score, classification_report
 
-from transformers import BertConfig, DistilBertConfig, AlbertConfig
+from transformers import BertConfig, DistilBertConfig, AlbertConfig, RobertaConfig, AutoTokenizer
 from transformers import BertTokenizer, DistilBertTokenizer, AlbertTokenizer
 
-from model import JointBERT, JointDistilBERT, JointAlbert, JointBERTSlotby2task
+from model import JointBERT, JointDistilBERT, JointAlbert, JointBERTSlotby2task, JointRoBERTa, JointRoBERTaSlotby2task, BERTner, BERTnerSlotby2task
 
 MODEL_CLASSES = {
+    'phobert': (RobertaConfig, JointRoBERTa, AutoTokenizer),
+    'phobert-seqlabelby2task': (RobertaConfig, JointRoBERTaSlotby2task, AutoTokenizer),
     'bert': (BertConfig, JointBERT, BertTokenizer),
+    'bertcased_ner_': (BertConfig, BERTner, BertTokenizer),
+    'bertcased-seqlabelby2task_ner_': (BertConfig, BERTnerSlotby2task, BertTokenizer),
     'bertcased': (BertConfig, JointBERT, BertTokenizer),
     'bertcased-seqlabelby2task': (BertConfig, JointBERTSlotby2task, BertTokenizer),
     'bertseqlabelby2task': (BertConfig, JointBERTSlotby2task, BertTokenizer),
@@ -22,9 +26,14 @@ MODEL_CLASSES = {
 }
 
 MODEL_PATH_MAP = {
+    'phobert': 'vinai/phobert-base',
+    'phobert-seqlabelby2task': 'vinai/phobert-base',
+    'bertcased_ner_': 'bert-base-cased',
+    'bertcased-seqlabelby2task_ner_': 'bert-base-cased',
     'bertcased': 'bert-base-cased',
     'bertcased-seqlabelby2task': 'bert-base-cased',
     'bert': 'bert-base-uncased',
+    'roberta': 'roberta-base',
     'bertseqlabelby2task': 'bert-base-uncased',
     'distilbert': 'distilbert-base-uncased',
     'albert': 'albert-xxlarge-v1'
@@ -51,6 +60,8 @@ def get_slot_by2task_labels(args):
 
 
 def load_tokenizer(args):
+    if "phobert" in args.model_type:
+        return MODEL_CLASSES[args.model_type][2].from_pretrained(args.model_name_or_path, use_fast=False)
     return MODEL_CLASSES[args.model_type][2].from_pretrained(args.model_name_or_path)
 
 

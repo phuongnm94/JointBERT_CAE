@@ -39,8 +39,9 @@ if __name__=="__main__":
                             filemode='w',)
 
     args_model = torch.load(f"{args_err_analyze.model_dir}/training_args.bin")
-    if not hasattr(args_model, 'combine_local_context'):
-        setattr(args_model, 'combine_local_context', False)
+    for attr_false in ['combine_local_context', 'combine_start_end_obj']:
+        if not hasattr(args_model, attr_false):
+            setattr(args_model, attr_false, False)
     if not hasattr(args_model, 'no_tensorboard'):
         setattr(args_model, 'no_tensorboard', True)
     args_model.model_dir = args_err_analyze.model_dir
@@ -73,11 +74,12 @@ if __name__=="__main__":
     false_sample_idx = [i for i, e in enumerate(sementic_acc) if not e]
 
 
-
     for idx in false_sample_idx:
         logger.info("=======")
         logger.info("id={}".format(idx))
-        words = " ".join([e for e in tokenizer.convert_ids_to_tokens(data_checking[idx][0]) if e!= "[PAD]"][1:-1]).replace(" ##", "").split(" ")
+        words = " ".join([e for e in \
+                tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(data_checking[idx][0])).split(" ") if (e!= "[PAD]" and e!= "<pad>")][1:-1])\
+                .replace(" ##", "").replace("@@", "").split(" ")
         logger.info("sentence  = {}".format(words))
         logger.info("slot_pred = {}".format([f"{lb}[{w}]" for lb, w in zip(slot_preds_list[idx], words)]))
         logger.info("slot_gold = {}".format([f"{lb}[{w}]" for lb, w in zip(out_slot_label_list[idx], words)]))

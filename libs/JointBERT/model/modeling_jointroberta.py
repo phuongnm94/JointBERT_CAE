@@ -1,17 +1,17 @@
 import torch
 import torch.nn as nn
-from transformers.models.bert.modeling_bert  import BertPreTrainedModel, BertModel, BertConfig
+from transformers.models.roberta.modeling_roberta import RobertaModel, RobertaPreTrainedModel
 from torchcrf import CRF
 from .module import BridgeIntentEntities, IntentClassifier, NgramMLP, SlotClassifier, NgramLSTM
 
 
-class JointBERT(BertPreTrainedModel):
+class JointRoBERTa(RobertaPreTrainedModel):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, **kwargs):
-        super(JointBERT, self).__init__(config)
+        super(JointRoBERTa, self).__init__(config)
         self.args = args
         self.num_intent_labels = len(intent_label_lst)
         self.num_slot_labels = len(slot_label_lst)
-        self.bert = BertModel(config=config)  # Load pretrained bert
+        self.roberta = RobertaModel(config=config)  # Load pretrained bert
 
         self.intent_classifier = IntentClassifier(config.hidden_size, self.num_intent_labels, args.dropout_rate)
         self.slot_classifier = SlotClassifier(config.hidden_size, self.num_slot_labels, args.dropout_rate)
@@ -22,7 +22,7 @@ class JointBERT(BertPreTrainedModel):
             self.crf = CRF(num_tags=self.num_slot_labels, batch_first=True)
 
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, **kwargs):
-        outputs = self.bert(input_ids, attention_mask=attention_mask,
+        outputs = self.roberta(input_ids, attention_mask=attention_mask,
                             token_type_ids=token_type_ids)  # sequence_output, pooled_output, (hidden_states), (attentions)
         sequence_output = outputs[0]
         pooled_output = outputs[1]  # [CLS]
@@ -70,16 +70,16 @@ class JointBERT(BertPreTrainedModel):
 
         return outputs  # (loss), logits, (hidden_states), (attentions) # Logits is a tuple of intent and slot logits
 
-class JointBERTSlotby2task(JointBERT):
+class JointRoBERTaSlotby2task(JointRoBERTa):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, slot_type_label_list):
-        super(JointBERTSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
+        super(JointRoBERTaSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
         self.num_slot_type_labels = len(slot_type_label_list)
         self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
         if args.combine_local_context:
             self.local_context = NgramLSTM(4, config.hidden_size, args.dropout_rate)
 
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, slot_type_labels_ids):
-        outputs = self.bert(input_ids, attention_mask=attention_mask,
+        outputs = self.roberta(input_ids, attention_mask=attention_mask,
                             token_type_ids=token_type_ids)  # sequence_output, pooled_output, (hidden_states), (attentions)
         sequence_output = outputs[0]
         pooled_output = outputs[1]  # [CLS]

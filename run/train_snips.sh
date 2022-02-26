@@ -15,6 +15,10 @@ python3 main.py --task snips \
                   --model_dir $MODEL_DIR \
                   --do_train --do_eval \
                   --num_train_epochs $EP |& tee $MODEL_DIR/train.log
+
+python3 err_analyze.py --model_dir $MODEL_DIR --mode test 
+python3 err_analyze.py --model_dir $MODEL_DIR --mode dev 
+
  
 
  

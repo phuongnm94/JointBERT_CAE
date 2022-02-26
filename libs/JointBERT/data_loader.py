@@ -169,9 +169,11 @@ processors = {
     "atis": JointProcessor,
     "snips": JointProcessor,
     "conll2003": JointProcessor,
+    "atisvn": JointProcessor,
     "atis_slotby2task": JointProcessorSlotBy2task,
     "snips_slotby2task": JointProcessorSlotBy2task,
     "conll2003_slotby2task": JointProcessorSlotBy2task,
+    "atisvn_slotby2task": JointProcessorSlotBy2task,
 }
 
 def _generate_type_slot_labels_ids(example, max_seq_len, tokenizer,
@@ -315,7 +317,7 @@ def convert_examples_to_features(examples, max_seq_len, tokenizer,
 
 def load_and_cache_examples(args, tokenizer, mode):
     processor = processors[args.task](args)
-    using_seqlabelby2task = "seqlabelby2task" in args.model_type 
+    using_slotby2task = "slotby2task" in args.task 
 
     # Load data features from cache or dataset file
     cached_features_file = os.path.join(
@@ -325,7 +327,7 @@ def load_and_cache_examples(args, tokenizer, mode):
             args.task,
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             args.max_seq_len,
-            "_slotby2taskV2" if using_seqlabelby2task else ""
+            "_slotby2taskV2" if using_slotby2task else ""
         )
     ) 
 
@@ -348,8 +350,8 @@ def load_and_cache_examples(args, tokenizer, mode):
         pad_token_label_id = args.ignore_index
         features = convert_examples_to_features(examples, args.max_seq_len, tokenizer,
                                                 pad_token_label_id=pad_token_label_id, 
-                                                slot_by2task=using_seqlabelby2task,
-                                                start_object_id=processor.get_start_object_slot_lb_id() if using_seqlabelby2task else None)
+                                                slot_by2task=using_slotby2task,
+                                                start_object_id=processor.get_start_object_slot_lb_id() if using_slotby2task else None)
         logger.info("Saving features into cached file %s", cached_features_file)
         torch.save(features, cached_features_file)
 

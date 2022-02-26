@@ -198,11 +198,13 @@ class Trainer(object):
             nb_eval_steps += 1
 
             # Intent prediction
-            if intent_preds is None:
-                intent_preds = intent_logits.detach().cpu().numpy()
+            if out_intent_label_ids is None:
+                if '_ner_' not in self.args.model_type: # skip intent prediction in the case using NER model 
+                    intent_preds = intent_logits.detach().cpu().numpy()
                 out_intent_label_ids = inputs['intent_label_ids'].detach().cpu().numpy()
             else:
-                intent_preds = np.append(intent_preds, intent_logits.detach().cpu().numpy(), axis=0)
+                if '_ner_' not in self.args.model_type:  # skip intent prediction in the case using NER model 
+                    intent_preds = np.append(intent_preds, intent_logits.detach().cpu().numpy(), axis=0)
                 out_intent_label_ids = np.append(
                     out_intent_label_ids, inputs['intent_label_ids'].detach().cpu().numpy(), axis=0)
 
@@ -233,7 +235,11 @@ class Trainer(object):
         }
 
         # Intent result
-        intent_preds = np.argmax(intent_preds, axis=1)
+        if '_ner_' not in self.args.model_type: 
+            intent_preds = np.argmax(intent_preds, axis=1)
+        else: 
+            # skip intent prediction in the case using NER model 
+            intent_preds = out_intent_label_ids
 
         # Slot result
         if "slotby2task" not in self.args.task:

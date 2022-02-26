@@ -5,15 +5,15 @@ from torchcrf import CRF
 from .module import BridgeIntentEntities, IntentClassifier, NgramMLP, SlotClassifier, NgramLSTM
 
 
-class JointBERT(BertPreTrainedModel):
+class BERTner(BertPreTrainedModel):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, **kwargs):
-        super(JointBERT, self).__init__(config)
+        super(BERTner, self).__init__(config)
         self.args = args
         self.num_intent_labels = len(intent_label_lst)
         self.num_slot_labels = len(slot_label_lst)
+        # if args.
         self.bert = BertModel(config=config)  # Load pretrained bert
 
-        self.intent_classifier = IntentClassifier(config.hidden_size, self.num_intent_labels, args.dropout_rate)
         self.slot_classifier = SlotClassifier(config.hidden_size, self.num_slot_labels, args.dropout_rate)
         if args.combine_local_context:
             self.local_context = NgramMLP(4, config.hidden_size)
@@ -27,7 +27,6 @@ class JointBERT(BertPreTrainedModel):
         sequence_output = outputs[0]
         pooled_output = outputs[1]  # [CLS]
 
-        intent_logits = self.intent_classifier(pooled_output)
         if self.args.combine_local_context:
             tmp = sequence_output.clone()[:, 1:, :]
             sequence_output = sequence_output.clone()
@@ -37,15 +36,6 @@ class JointBERT(BertPreTrainedModel):
             slot_logits = self.slot_classifier(sequence_output)
 
         total_loss = 0
-        # 1. Intent Softmax
-        if intent_label_ids is not None:
-            if self.num_intent_labels == 1:
-                intent_loss_fct = nn.MSELoss()
-                intent_loss = intent_loss_fct(intent_logits.view(-1), intent_label_ids.view(-1))
-            else:
-                intent_loss_fct = nn.CrossEntropyLoss()
-                intent_loss = intent_loss_fct(intent_logits.view(-1, self.num_intent_labels), intent_label_ids.view(-1))
-            total_loss += intent_loss
 
         # 2. Slot Softmax
         if slot_labels_ids is not None:
@@ -64,15 +54,15 @@ class JointBERT(BertPreTrainedModel):
                     slot_loss = slot_loss_fct(slot_logits.view(-1, self.num_slot_labels), slot_labels_ids.view(-1))
             total_loss += self.args.slot_loss_coef * slot_loss
 
-        outputs = ((intent_logits, slot_logits),) + outputs[2:]  # add hidden states and attention if they are here
+        outputs = ((pooled_output, slot_logits),) + outputs[2:]  # add hidden states and attention if they are here
 
         outputs = (total_loss,) + outputs
 
         return outputs  # (loss), logits, (hidden_states), (attentions) # Logits is a tuple of intent and slot logits
 
-class JointBERTSlotby2task(JointBERT):
+class BERTnerSlotby2task(BERTner):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, slot_type_label_list):
-        super(JointBERTSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
+        super(BERTnerSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
         self.num_slot_type_labels = len(slot_type_label_list)
         self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
         if args.combine_local_context:
@@ -84,7 +74,6 @@ class JointBERTSlotby2task(JointBERT):
         sequence_output = outputs[0]
         pooled_output = outputs[1]  # [CLS]
 
-        intent_logits = self.intent_classifier(pooled_output)
         slot_logits = self.slot_classifier(sequence_output)
         if self.args.combine_local_context:
             tmp = sequence_output.clone()[:, 1:, :]
@@ -95,15 +84,6 @@ class JointBERTSlotby2task(JointBERT):
             slot_type_logits = self.slot_type_classifier(sequence_output)
 
         total_loss = 0
-        # 1. Intent Softmax
-        if intent_label_ids is not None:
-            if self.num_intent_labels == 1:
-                intent_loss_fct = nn.MSELoss()
-                intent_loss = intent_loss_fct(intent_logits.view(-1), intent_label_ids.view(-1))
-            else:
-                intent_loss_fct = nn.CrossEntropyLoss()
-                intent_loss = intent_loss_fct(intent_logits.view(-1, self.num_intent_labels), intent_label_ids.view(-1))
-            total_loss += intent_loss
 
         # 2. Slot Softmax + slot type softmax
         if slot_labels_ids is not None:
@@ -129,7 +109,7 @@ class JointBERTSlotby2task(JointBERT):
             total_loss += self.args.slot_loss_coef * slot_loss
 
 
-        outputs = ((intent_logits, slot_logits, slot_type_logits),) + outputs[2:]  # add hidden states and attention if they are here
+        outputs = ((pooled_output, slot_logits, slot_type_logits),) + outputs[2:]  # add hidden states and attention if they are here
 
         outputs = (total_loss,) + outputs
 
