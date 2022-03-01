@@ -13,8 +13,17 @@ class BERTner(BertPreTrainedModel):
         self.num_slot_labels = len(slot_label_lst)
         # if args.
         self.bert = BertModel(config=config)  # Load pretrained bert
+        if args.use_lstm:
+            self.lstm = nn.LSTM(config.hidden_size,
+                            200,
+                            batch_first=True,
+                            num_layers=2,
+                            bidirectional=True)
 
-        self.slot_classifier = SlotClassifier(config.hidden_size, self.num_slot_labels, args.dropout_rate)
+            self.slot_classifier = SlotClassifier(400, self.num_slot_labels, args.dropout_rate)
+        else:
+            self.slot_classifier = SlotClassifier(config.hidden_size, self.num_slot_labels, args.dropout_rate)
+
         if args.combine_local_context:
             self.local_context = NgramMLP(4, config.hidden_size)
 
@@ -24,7 +33,12 @@ class BERTner(BertPreTrainedModel):
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, **kwargs):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
                             token_type_ids=token_type_ids)  # sequence_output, pooled_output, (hidden_states), (attentions)
-        sequence_output = outputs[0]
+        
+        if self.args.use_lstm:
+            output_lstm, (hn, cn) = self.lstm(outputs[0])
+            sequence_output = output_lstm
+        else:
+            sequence_output = outputs[0]
         pooled_output = outputs[1]  # [CLS]
 
         if self.args.combine_local_context:

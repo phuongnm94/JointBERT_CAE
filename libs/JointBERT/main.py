@@ -37,6 +37,8 @@ if __name__ == '__main__':
 
     parser.add_argument("--model_type", default="bert", type=str, help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--combine_local_context", default=False, action="store_true", help="combine local context")
+    parser.add_argument("--combine_start_end_obj", default=False, action="store_true", help="combine start and end object")
+    parser.add_argument("--use_lstm", default=False, action="store_true", help="using lstm on the top of BERT")
 
     parser.add_argument('--seed', type=int, default=1234, help="random seed for initialization")
     parser.add_argument("--train_batch_size", default=32, type=int, help="Batch size for training.")

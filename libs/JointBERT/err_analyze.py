@@ -39,7 +39,7 @@ if __name__=="__main__":
                             filemode='w',)
 
     args_model = torch.load(f"{args_err_analyze.model_dir}/training_args.bin")
-    for attr_false in ['combine_local_context', 'combine_start_end_obj']:
+    for attr_false in ['combine_local_context', 'combine_start_end_obj', 'use_lstm']:
         if not hasattr(args_model, attr_false):
             setattr(args_model, attr_false, False)
     if not hasattr(args_model, 'no_tensorboard'):
