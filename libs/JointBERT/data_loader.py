@@ -22,12 +22,13 @@ class InputExample(object):
         slot_labels: (Optional) list. The slot labels of the example.
     """
 
-    def __init__(self, guid, words, intent_label=None, slot_labels=None, slot_type_labels=None):
+    def __init__(self, guid, words, intent_label=None, slot_labels=None, slot_type_labels=None, slot_entity_end_index=None):
         self.guid = guid
         self.words = words
         self.intent_label = intent_label
         self.slot_labels = slot_labels
         self.slot_type_labels = slot_type_labels
+        self.slot_entity_end_index = slot_entity_end_index
 
     def __repr__(self):
         return str(self.to_json_string())
@@ -45,13 +46,14 @@ class InputExample(object):
 class InputFeatures(object):
     """A single set of features of data."""
 
-    def __init__(self, input_ids, attention_mask, token_type_ids, intent_label_id, slot_labels_ids, slot_type_labels_ids):
+    def __init__(self, input_ids, attention_mask, token_type_ids, intent_label_id, slot_labels_ids, slot_type_labels_ids, slot_entity_end_index):
         self.input_ids = input_ids
         self.attention_mask = attention_mask
         self.token_type_ids = token_type_ids
         self.intent_label_id = intent_label_id
         self.slot_labels_ids = slot_labels_ids
         self.slot_type_labels_ids = slot_type_labels_ids
+        self.slot_entity_end_index = slot_entity_end_index
 
     def __repr__(self):
         return str(self.to_json_string())
@@ -136,6 +138,8 @@ class JointProcessorSlotBy2task(JointProcessor):
 
     def get_start_object_slot_lb_id(self):
         return self.slot_labels.index("B-object")
+    def get_in_object_slot_lb_id(self):
+        return self.slot_labels.index("I-object")
 
     def _create_examples(self, texts, intents, slots, set_type):
         """Creates examples for the training and dev sets."""
@@ -149,36 +153,47 @@ class JointProcessorSlotBy2task(JointProcessor):
             # 3. slot + type of slot
             slot_labels = []
             slot_type_labels = []
-            for s in slot.split():
+            slot_entity_end_index = []
+            cur_entity_idx = 0
+            for idx, s in enumerate(slot.split()):
                 new_s = s
                 new_s_type = s
+                slot_entity_end_index.append(0)
                 if s.startswith("B-") or s.startswith("I-"):
                     new_s = "{}object".format(s[:2])
                     new_s_type = s[2:] 
                     if s.startswith("B-"):
+                        cur_entity_idx = idx
                         slot_type_labels.append(self.slot_type_labels.index(new_s_type) if new_s_type in self.slot_type_labels else self.slot_type_labels.index("UNK"))
+                    if s.startswith("I-"):
+                        slot_entity_end_index[cur_entity_idx] += 1
                 slot_labels.append(self.slot_labels.index(new_s) if new_s in self.slot_labels else self.slot_labels.index("UNK"))
                 if not s.startswith("B-"):
                     slot_type_labels.append(self.slot_type_labels.index('PAD'))
 
             assert len(words) == len(slot_labels)
-            examples.append(InputExample(guid=guid, words=words, intent_label=intent_label, slot_labels=slot_labels, slot_type_labels=slot_type_labels))
+            examples.append(InputExample(guid=guid, words=words, intent_label=intent_label, slot_labels=slot_labels, slot_type_labels=slot_type_labels,
+                            slot_entity_end_index=slot_entity_end_index))
         return examples
 
 processors = {
     "atis": JointProcessor,
     "snips": JointProcessor,
     "conll2003": JointProcessor,
+    "conll2003truecase": JointProcessor,
     "atisvn": JointProcessor,
     "atis_slotby2task": JointProcessorSlotBy2task,
     "snips_slotby2task": JointProcessorSlotBy2task,
     "conll2003_slotby2task": JointProcessorSlotBy2task,
+    "conll2003truecase_slotby2task": JointProcessorSlotBy2task,
+    "snips_slotby2taskEidx": JointProcessorSlotBy2task,
+    "atis_slotby2taskEidx": JointProcessorSlotBy2task,
     "atisvn_slotby2task": JointProcessorSlotBy2task,
 }
 
 def _generate_type_slot_labels_ids(example, max_seq_len, tokenizer,
                                     pad_token_label_id=-100,
-                                    start_object_id=0):
+                                    start_object_id=0, in_object_id=0):
     
     # Setting based on the current model type
     cls_token = tokenizer.cls_token
@@ -186,13 +201,30 @@ def _generate_type_slot_labels_ids(example, max_seq_len, tokenizer,
     unk_token = tokenizer.unk_token
 
     slot_type_labels_ids = []
+    updated_slot_entity_end_index = []
+    entity_start_idx = None
+    
     # Tokenize word by word (for NER)
     tokens = []
-    for word, slot_label, slot_type_label in zip(example.words, example.slot_labels, example.slot_type_labels):
+    for word, slot_label, slot_type_label, slot_entity_end_index in zip(example.words, example.slot_labels, example.slot_type_labels, example.slot_entity_end_index):
+        # set entity start idx 
+        if slot_label == start_object_id:
+            entity_start_idx = len(tokens)
+        elif slot_label != start_object_id and  slot_label != in_object_id:
+            entity_start_idx = None
+
         word_tokens = tokenizer.tokenize(word)
         if not word_tokens:
             word_tokens = [unk_token]  
         tokens.extend(word_tokens)
+
+        # object end index 
+        updated_slot_entity_end_index.extend([slot_entity_end_index])
+        if len(word_tokens) > 1:
+            updated_slot_entity_end_index.extend([0]*(len(word_tokens) - 1))
+            if entity_start_idx is not None:
+                updated_slot_entity_end_index[entity_start_idx] += (len(word_tokens) - 1)
+
         # Use the real label id for the first token of the entity
         slot_type_labels_ids.extend([int(slot_type_label)] + [pad_token_label_id] * (len(word_tokens) - 1))
 
@@ -201,21 +233,26 @@ def _generate_type_slot_labels_ids(example, max_seq_len, tokenizer,
     if len(tokens) > max_seq_len - special_tokens_count:
         tokens = tokens[:(max_seq_len - special_tokens_count)]
         slot_type_labels_ids = slot_type_labels_ids[:(max_seq_len - special_tokens_count)]
+        updated_slot_entity_end_index = updated_slot_entity_end_index[:(max_seq_len - special_tokens_count)]
 
     # Add [SEP] token
     tokens += [sep_token]
     slot_type_labels_ids += [pad_token_label_id]
+    updated_slot_entity_end_index += [0]
 
     # Add [CLS] token
     tokens = [cls_token] + tokens
     slot_type_labels_ids = [pad_token_label_id] + slot_type_labels_ids 
+    updated_slot_entity_end_index = [0] + updated_slot_entity_end_index
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
     
     # Zero-pad up to the sequence length.
     padding_length = max_seq_len - len(input_ids)
     slot_type_labels_ids = slot_type_labels_ids + ([pad_token_label_id] * padding_length)
-    return slot_type_labels_ids
+    updated_slot_entity_end_index = updated_slot_entity_end_index + ([0] * padding_length)
+    updated_slot_entity_end_index = [i+v for i, v in enumerate(updated_slot_entity_end_index)]
+    return slot_type_labels_ids, updated_slot_entity_end_index
 
 def convert_examples_to_features(examples, max_seq_len, tokenizer,
                                  pad_token_label_id=-100,
@@ -223,7 +260,7 @@ def convert_examples_to_features(examples, max_seq_len, tokenizer,
                                  pad_token_segment_id=0,
                                  sequence_a_segment_id=0,
                                  mask_padding_with_zero=True,
-                                 start_object_id=0,
+                                 start_object_id=0, in_object_id=0,
                                  slot_by2task=False):
     # Setting based on the current model type
     cls_token = tokenizer.cls_token
@@ -278,11 +315,13 @@ def convert_examples_to_features(examples, max_seq_len, tokenizer,
 
         # for slot type labels 
         slot_type_labels_ids =[]
+        updated_slot_entity_end_index = []
         if slot_by2task:
-            slot_type_labels_ids = _generate_type_slot_labels_ids(example, max_seq_len, tokenizer, 
+            slot_type_labels_ids, updated_slot_entity_end_index = _generate_type_slot_labels_ids(example, max_seq_len, tokenizer, 
                                                                   pad_token_label_id=pad_token_label_id,
-                                                                  start_object_id=start_object_id)
+                                                                  start_object_id=start_object_id, in_object_id=in_object_id)
             assert len(slot_type_labels_ids) == max_seq_len, "Error with slot slot_type_labels_ids {} vs {}".format(len(slot_type_labels_ids), max_seq_len)
+            assert len(updated_slot_entity_end_index) == max_seq_len, "Error with slot updated_slot_entity_end_index {} vs {}".format(len(updated_slot_entity_end_index), max_seq_len)
 
         assert len(input_ids) == max_seq_len, "Error with input length {} vs {}".format(len(input_ids), max_seq_len)
         assert len(attention_mask) == max_seq_len, "Error with attention mask length {} vs {}".format(len(attention_mask), max_seq_len)
@@ -302,6 +341,7 @@ def convert_examples_to_features(examples, max_seq_len, tokenizer,
             logger.info("slot_labels: %s" % " ".join([str(x) for x in slot_labels_ids]))
             if slot_by2task:
                 logger.info("slot_type_labels: %s" % " ".join([str(x) for x in slot_type_labels_ids]))
+                logger.info("slot_entity_end_index: %s" % " ".join([str(x) for x in updated_slot_entity_end_index]))
 
         features.append(
             InputFeatures(input_ids=input_ids,
@@ -309,7 +349,8 @@ def convert_examples_to_features(examples, max_seq_len, tokenizer,
                           token_type_ids=token_type_ids,
                           intent_label_id=intent_label_id,
                           slot_labels_ids=slot_labels_ids,
-                          slot_type_labels_ids=slot_type_labels_ids
+                          slot_type_labels_ids=slot_type_labels_ids,
+                          slot_entity_end_index=updated_slot_entity_end_index
                           ))
 
     return features
@@ -351,7 +392,8 @@ def load_and_cache_examples(args, tokenizer, mode):
         features = convert_examples_to_features(examples, args.max_seq_len, tokenizer,
                                                 pad_token_label_id=pad_token_label_id, 
                                                 slot_by2task=using_slotby2task,
-                                                start_object_id=processor.get_start_object_slot_lb_id() if using_slotby2task else None)
+                                                start_object_id=processor.get_start_object_slot_lb_id() if using_slotby2task else None,
+                                                in_object_id=processor.get_in_object_slot_lb_id() if using_slotby2task else None)
         logger.info("Saving features into cached file %s", cached_features_file)
         torch.save(features, cached_features_file)
 
@@ -362,7 +404,9 @@ def load_and_cache_examples(args, tokenizer, mode):
     all_intent_label_ids = torch.tensor([f.intent_label_id for f in features], dtype=torch.long)
     all_slot_labels_ids = torch.tensor([f.slot_labels_ids for f in features], dtype=torch.long)
     slot_type_labels_ids = torch.tensor([f.slot_type_labels_ids for f in features], dtype=torch.long)
+    slot_entity_end_index = torch.tensor([f.slot_entity_end_index for f in features], dtype=torch.long) if args.combine_start_end_obj else \
+        torch.zeros_like(all_slot_labels_ids) 
 
     dataset = TensorDataset(all_input_ids, all_attention_mask,
-                            all_token_type_ids, all_intent_label_ids, all_slot_labels_ids, slot_type_labels_ids)
+                            all_token_type_ids, all_intent_label_ids, all_slot_labels_ids, slot_type_labels_ids, slot_entity_end_index)
     return dataset

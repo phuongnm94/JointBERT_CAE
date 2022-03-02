@@ -93,6 +93,8 @@ class Trainer(object):
                           'intent_label_ids': batch[3],
                           'slot_type_labels_ids': batch[5] if len(batch) > 5 else None,
                           'slot_labels_ids': batch[4]}
+                if self.args.combine_start_end_obj:
+                    inputs['slot_entity_end_index'] = batch[6]
                 if self.args.model_type != 'distilbert':
                     inputs['token_type_ids'] = batch[2]
                 outputs = self.model(**inputs)
@@ -187,6 +189,48 @@ class Trainer(object):
                           'slot_labels_ids': batch[4]}
                 if self.args.model_type != 'distilbert':
                     inputs['token_type_ids'] = batch[2]
+
+                # =================
+                # BERT Classify Anonymous Entity
+                if "slotby2task" in self.args.task and self.args.combine_start_end_obj:
+                    # infer model using slot by 2 task with combine start - end index of entity
+                    # logits of slot_type_labels require information of slot_labels_ids 
+                    infer_inputs =  {'input_ids': batch[0], 'attention_mask': batch[1], 'token_type_ids': batch[2]}
+                    outputs = self.model(**infer_inputs)
+                    _, (_, slot_logits, _) = outputs[:2]
+                    
+                    # detect anonymous entity
+                    slot_first_preds = torch.argmax(slot_logits, dim=2)
+                    # infer end index 
+                    batch_end_idx = torch.zeros_like(slot_first_preds)
+                    batch_sent_lengths = torch.sum(batch[1], dim=1) - 1         # not count [SEP] at last
+
+                    start_object_id = self.slot_label_lst.index("B-object")
+                    in_object_id = self.slot_label_lst.index("I-object")
+                    padding_id = self.slot_label_lst.index("PAD")
+                    for i_sample in range(slot_first_preds.shape[0]):
+                        for i_w in range(slot_first_preds.shape[1]):
+                            if i_w >= batch_sent_lengths[i_sample]:
+                                # padding word and SEP at last token
+                                batch_end_idx[i_sample][i_w] = i_w
+                                continue 
+
+                            if slot_first_preds[i_sample][i_w] == start_object_id:
+                                # find index of end object based on slot preds
+                                end_obj_idx = i_w
+                                for i_w_checking in range(i_w+1, batch_sent_lengths[i_sample]):
+                                    slot_lb_checking = slot_first_preds[i_sample][i_w_checking] 
+                                    if not (slot_lb_checking == in_object_id or slot_lb_checking == padding_id):
+                                        break
+                                    else:
+                                        end_obj_idx = i_w_checking
+
+                                batch_end_idx[i_sample][i_w] = end_obj_idx
+                            else:
+                                batch_end_idx[i_sample][i_w] = i_w
+                    inputs['slot_entity_end_index'] = batch_end_idx
+                # =================
+
                 outputs = self.model(**inputs)
                 if "slotby2task" in self.args.task: 
                     tmp_eval_loss, (intent_logits, slot_logits, slot_type_logits) = outputs[:2]

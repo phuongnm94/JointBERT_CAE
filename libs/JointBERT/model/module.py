@@ -24,6 +24,17 @@ class SlotClassifier(nn.Module):
         x = self.dropout(x)
         return self.linear(x)
 
+class SlotTypeClassifier(nn.Module):
+    def __init__(self, input_dim, num_slot_labels, dropout_rate=0.):
+        super(SlotTypeClassifier, self).__init__()
+        self.dropout = nn.Dropout(dropout_rate)
+        self.linear = nn.Linear(input_dim, num_slot_labels)
+        self.activate = nn.Tanh()
+
+    def forward(self, x):
+        x = self.dropout(x)
+        return self.linear(self.activate(x))
+
 class BridgeIntentEntities(SlotClassifier): 
     pass
 

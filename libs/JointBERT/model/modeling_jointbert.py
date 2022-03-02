@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from transformers.models.bert.modeling_bert  import BertPreTrainedModel, BertModel, BertConfig
 from torchcrf import CRF
-from .module import BridgeIntentEntities, IntentClassifier, NgramMLP, SlotClassifier, NgramLSTM
+from .module import BridgeIntentEntities, IntentClassifier, NgramMLP, SlotClassifier, NgramLSTM, SlotTypeClassifier
 
 
 class JointBERT(BertPreTrainedModel):
@@ -74,11 +74,14 @@ class JointBERTSlotby2task(JointBERT):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, slot_type_label_list):
         super(JointBERTSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
         self.num_slot_type_labels = len(slot_type_label_list)
-        self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
+        if not args.combine_start_end_obj:
+            self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
+        else:
+            self.slot_type_classifier = SlotTypeClassifier(2*config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
         if args.combine_local_context:
             self.local_context = NgramLSTM(4, config.hidden_size, args.dropout_rate)
 
-    def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, slot_type_labels_ids):
+    def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids=None, slot_labels_ids=None, slot_type_labels_ids=None, slot_entity_end_index=None):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
                             token_type_ids=token_type_ids)  # sequence_output, pooled_output, (hidden_states), (attentions)
         sequence_output = outputs[0]
@@ -92,7 +95,20 @@ class JointBERTSlotby2task(JointBERT):
             sequence_output[:, 1:, :] = 0.5*(tmp + self.local_context(tmp)) 
             slot_type_logits = self.slot_type_classifier(sequence_output)
         else:
-            slot_type_logits = self.slot_type_classifier(sequence_output)
+            if self.args.combine_start_end_obj and slot_entity_end_index is not None:
+                btch_entity_end_logits = None
+                for i in range(sequence_output.shape[0]):
+                    entity_end_logits = torch.index_select(sequence_output[i], 0, slot_entity_end_index[i]).unsqueeze(0)
+                    if i == 0:
+                        btch_entity_end_logits = entity_end_logits
+                    else:
+                        btch_entity_end_logits = torch.cat([btch_entity_end_logits, entity_end_logits], dim=0)
+
+                slot_type_logits = self.slot_type_classifier(torch.cat([sequence_output, btch_entity_end_logits], dim=2)) 
+            elif self.args.combine_start_end_obj and slot_entity_end_index is None:
+                slot_type_logits = None 
+            else:
+                slot_type_logits = self.slot_type_classifier(sequence_output)
 
         total_loss = 0
         # 1. Intent Softmax
