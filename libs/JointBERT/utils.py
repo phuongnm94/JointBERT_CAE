@@ -15,6 +15,8 @@ MODEL_CLASSES = {
     'phobert': (RobertaConfig, JointRoBERTa, AutoTokenizer),
     'phobert-seqlabelby2task': (RobertaConfig, JointRoBERTaSlotby2task, AutoTokenizer),
     'bert': (BertConfig, JointBERT, BertTokenizer),
+    'bertLcased_ner_': (BertConfig, BERTner, BertTokenizer),
+    'bertLcased-seqlabelby2task_ner_': (BertConfig, BERTnerSlotby2task, BertTokenizer),
     'bertcased_ner_': (BertConfig, BERTner, BertTokenizer),
     'bertcased-seqlabelby2task_ner_': (BertConfig, BERTnerSlotby2task, BertTokenizer),
     'bertcased': (BertConfig, JointBERT, BertTokenizer),
@@ -28,6 +30,8 @@ MODEL_CLASSES = {
 MODEL_PATH_MAP = {
     'phobert': 'vinai/phobert-base',
     'phobert-seqlabelby2task': 'vinai/phobert-base',
+    'bertLcased_ner_': 'bert-large-cased',
+    'bertLcased-seqlabelby2task_ner_': 'bert-large-cased',
     'bertcased_ner_': 'bert-base-cased',
     'bertcased-seqlabelby2task_ner_': 'bert-base-cased',
     'bertcased': 'bert-base-cased',
