@@ -67,6 +67,41 @@ class BERTnerSlotby2task(BERTner):
         self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
         if args.combine_local_context:
             self.local_context = NgramLSTM(4, config.hidden_size, args.dropout_rate)
+        
+        # override crf layer 
+        if args.use_crf:
+            self.crf = CRF(num_tags=self.num_slot_type_labels, batch_first=True)
+    
+    @staticmethod
+    def reconstruct_entity_logits(slot_type_logits, entity_masked, slot_type_labels_ids=None):
+        count_entity = torch.sum(entity_masked, dim=1)
+        slot_type_new_logits = torch.zeros_like(slot_type_logits)
+        slot_type_new_mask= torch.zeros_like(entity_masked).fill_(False)
+        slot_type_new_labels_ids = torch.zeros_like(slot_type_labels_ids) if slot_type_labels_ids is not None else None
+
+        for i_sample in range(slot_type_logits.shape[0]):
+            found_entity_count = 0
+            for i_w in range(slot_type_logits.shape[1]):
+                if entity_masked[i_sample][i_w] or i_w == 0:
+                    slot_type_new_logits[i_sample, found_entity_count] = slot_type_logits[i_sample, i_w]
+                    slot_type_new_mask[i_sample, found_entity_count] = True
+                    if slot_type_new_labels_ids is not None:
+                        slot_type_new_labels_ids[i_sample, found_entity_count] = slot_type_labels_ids[i_sample, i_w]
+                    found_entity_count += 1
+            assert found_entity_count == count_entity[i_sample] + 1
+        return slot_type_new_logits, slot_type_new_mask, slot_type_new_labels_ids
+
+    @staticmethod
+    def place_entity_by_mask(slot_type_preds, masked, padding_value=0):
+        new_slot_type_preds = torch.IntTensor(masked.shape).fill_(padding_value).to(masked.device)
+        for i_sample in range(masked.shape[0]):
+            i_entity = 1                            # skip first entity
+            for i_w in range(1, masked.shape[1]):   # skip first token CLS
+                if masked[i_sample, i_w]:
+                    new_slot_type_preds[i_sample, i_w] = slot_type_preds[i_sample][i_entity]
+                    i_entity += 1
+            assert i_entity == len(slot_type_preds[i_sample])
+        return new_slot_type_preds
 
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, slot_type_labels_ids):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
@@ -88,8 +123,25 @@ class BERTnerSlotby2task(BERTner):
         # 2. Slot Softmax + slot type softmax
         if slot_labels_ids is not None:
             if self.args.use_crf:
-                slot_loss = self.crf(slot_logits, slot_labels_ids, mask=attention_mask.byte(), reduction='mean')
+                
+                # loss for type of Anonymous entities
+                entity_masked = slot_type_labels_ids.ne(0)
+
+                slot_type_new_logits, slot_type_new_mask, slot_type_new_labels_ids = self.reconstruct_entity_logits(
+                    slot_type_logits, entity_masked, slot_type_labels_ids)
+
+                slot_loss = self.crf(slot_type_new_logits, slot_type_new_labels_ids, mask=slot_type_new_mask.byte(), reduction='mean')
                 slot_loss = -1 * slot_loss  # negative log-likelihood
+
+                # loss for Anonymous entity detection 
+                slot_loss_fct = nn.CrossEntropyLoss(ignore_index=self.args.ignore_index)
+                if attention_mask is not None:
+                    active_loss = attention_mask.view(-1) == 1
+                    active_logits = slot_logits.view(-1, self.num_slot_labels)[active_loss] 
+                    active_labels = slot_labels_ids.view(-1)[active_loss] 
+                    slot_loss += slot_loss_fct(active_logits, active_labels)
+                else:
+                    slot_loss += slot_loss_fct(slot_logits.view(-1, self.num_slot_labels), slot_labels_ids.view(-1))
             else:
                 slot_loss_fct = nn.CrossEntropyLoss(ignore_index=self.args.ignore_index)
                 # Only keep active parts of the loss

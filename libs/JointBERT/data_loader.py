@@ -170,9 +170,11 @@ processors = {
     "snips": JointProcessor,
     "conll2003": JointProcessor,
     "atisvn": JointProcessor,
+    "conll2003truecase": JointProcessor,
     "atis_slotby2task": JointProcessorSlotBy2task,
     "snips_slotby2task": JointProcessorSlotBy2task,
     "conll2003_slotby2task": JointProcessorSlotBy2task,
+    "conll2003truecase_slotby2task": JointProcessorSlotBy2task,
     "atisvn_slotby2task": JointProcessorSlotBy2task,
 }
 

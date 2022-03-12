@@ -211,8 +211,23 @@ class Trainer(object):
             # Slot prediction
             if slot_preds is None:
                 if self.args.use_crf:
-                    # decode() in `torchcrf` returns list with best index directly
-                    slot_preds = np.array(self.model.crf.decode(slot_logits))
+                    if not "slotby2task" in self.args.task:
+                        # decode() in `torchcrf` returns list with best index directly
+                        slot_preds = np.array(self.model.crf.decode(slot_logits))
+                    else:
+                        start_obj_id = self.slot_label_lst.index('B-object')
+                        tmp_slot_preds = torch.argmax(slot_logits, dim=2)
+                        mask_object_pred = tmp_slot_preds == start_obj_id
+                        mask_object_pred[:, 0] = False #warranty that first token alway not object entity
+
+                        slot_type_new_logits, slot_type_new_mask, _ = self.model.reconstruct_entity_logits(
+                            slot_type_logits, mask_object_pred, slot_type_labels_ids=None)
+
+                        # combine sample in batch 
+                        slot_preds = slot_logits.detach().cpu().numpy()
+                        slot_type_preds = self.model.crf.decode(slot_type_new_logits, mask=slot_type_new_mask)
+                        slot_type_preds = self.model.place_entity_by_mask(slot_type_preds, mask_object_pred,
+                                                                          padding_value=self.args.ignore_index).detach().cpu().numpy()                
                 else:
                     slot_preds = slot_logits.detach().cpu().numpy()
                     slot_type_preds = slot_type_logits.detach().cpu().numpy() if "slotby2task" in self.args.task else None
@@ -221,7 +236,23 @@ class Trainer(object):
                 out_slot_type_labels_ids = inputs["slot_type_labels_ids"].detach().cpu().numpy() if "slotby2task" in self.args.task else None
             else:
                 if self.args.use_crf:
-                    slot_preds = np.append(slot_preds, np.array(self.model.crf.decode(slot_logits)), axis=0)
+                    if not "slotby2task" in self.args.task:
+                        slot_preds = np.append(slot_preds, np.array(self.model.crf.decode(slot_logits)), axis=0)
+                    else:
+                        start_obj_id = self.slot_label_lst.index('B-object')
+                        tmp_slot_preds = torch.argmax(slot_logits, dim=2)
+                        mask_object_pred = tmp_slot_preds == start_obj_id
+                        mask_object_pred[:, 0] = False #warranty that first token alway not object entity
+
+                        slot_type_new_logits, slot_type_new_mask, _ = self.model.reconstruct_entity_logits(
+                            slot_type_logits, mask_object_pred, slot_type_labels_ids=None)
+                        slot_type_preds_new = self.model.crf.decode(slot_type_new_logits, mask=slot_type_new_mask)
+                        slot_type_preds_new = self.model.place_entity_by_mask(slot_type_preds_new, mask_object_pred,
+                                                                              padding_value=self.args.ignore_index).detach().cpu().numpy()         
+
+                        # combine sample in batch 
+                        slot_preds = np.append(slot_preds, slot_logits.detach().cpu().numpy(), axis=0)
+                        slot_type_preds = np.append(slot_type_preds, slot_type_preds_new, axis=0)
                 else:
                     slot_preds = np.append(slot_preds, slot_logits.detach().cpu().numpy(), axis=0)
                     slot_type_preds = np.append(slot_type_preds, slot_type_logits.detach().cpu().numpy(), axis=0) if "slotby2task" in self.args.task else None
@@ -258,6 +289,10 @@ class Trainer(object):
             if not self.args.use_crf:
                 slot_preds = np.argmax(slot_preds, axis=2)
                 slot_type_preds = np.argmax(slot_type_preds, axis=2)
+            else:
+                # using crf on classify entity type
+                slot_preds = np.argmax(slot_preds, axis=2)
+
             slot_label_map = {i: label for i, label in enumerate(self.slot_label_lst)}
             slot_type_label_map = {i: label for i, label in enumerate(self.slot_type_label_lst)}
             out_slot_label_list = [[] for _ in range(out_slot_labels_ids.shape[0])]
