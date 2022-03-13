@@ -304,7 +304,10 @@ class Trainer(object):
                 for j in range(out_slot_labels_ids.shape[1]):
                     if out_slot_labels_ids[i, j] != self.pad_token_label_id:
                         out_slot_label_list[i].append(slot_label_map[out_slot_labels_ids[i][j]].replace("object", slot_type_label_map[out_slot_type_labels_ids[i][j]]))
-                        slot_preds_list[i].append(slot_label_map[slot_preds[i][j]].replace("object", slot_type_label_map[slot_type_preds[i][j]]))
+                        cur_slot_type_pred = slot_type_preds[i][j]
+                        if cur_slot_type_pred >= len(slot_type_label_map):
+                            cur_slot_type_pred = 0
+                        slot_preds_list[i].append(slot_label_map[slot_preds[i][j]].replace("object", slot_type_label_map[cur_slot_type_pred]))
 
         total_result = compute_metrics(intent_preds, out_intent_label_ids, slot_preds_list, out_slot_label_list)
         results.update(total_result)

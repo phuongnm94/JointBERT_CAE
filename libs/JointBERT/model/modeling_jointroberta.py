@@ -74,13 +74,13 @@ class JointRoBERTaSlotby2task(JointRoBERTa):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, slot_type_label_list):
         super(JointRoBERTaSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
         self.num_slot_type_labels = len(slot_type_label_list)
-        self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
+        self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels + self.num_intent_labels, args.dropout_rate)
         if args.combine_local_context:
             self.local_context = NgramLSTM(4, config.hidden_size, args.dropout_rate)        
 
         # override crf layer 
         if args.use_crf:
-            self.crf = CRF(num_tags=self.num_slot_type_labels, batch_first=True)
+            self.crf = CRF(num_tags=self.num_slot_type_labels + self.num_intent_labels, batch_first=True)
     
     @staticmethod
     def reconstruct_entity_logits(slot_type_logits, entity_masked, slot_type_labels_ids=None):
@@ -147,6 +147,7 @@ class JointRoBERTaSlotby2task(JointRoBERTa):
                 # loss for type of Anonymous entities
                 entity_masked = slot_type_labels_ids.ne(0)
 
+                slot_type_labels_ids[:, 0] = intent_label_ids + self.num_slot_type_labels + slot_type_labels_ids[:, 0]
                 slot_type_new_logits, slot_type_new_mask, slot_type_new_labels_ids = self.reconstruct_entity_logits(
                     slot_type_logits, entity_masked, slot_type_labels_ids)
 
