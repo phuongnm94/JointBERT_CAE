@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 import json
 import pickle
 
+seed_val = 100
+random.seed(seed_val)
+np.random.seed(seed_val)
 logger = logging.getLogger()
 
 def draw_dist(df, path_hist='entities_hist.svg', col='support'):
@@ -109,18 +112,19 @@ if __name__=="__main__":
         if len(over_sample_idxs) % 1000 == 0:
             print(len(over_sample_idxs), len(selected_entity))
 
+    out_data_dir = f"train_over_sample_{opts.threshold}"
     try:
-        os.makedirs(f"{data_dir}/train_over_sample")
+        os.makedirs(f"{data_dir}/{out_data_dir}")
     except:
         pass
     print(df)
     df = df.reset_index()
-    draw_dist(df, path_hist=f'{opts.data_dir}/train_over_sample/entities_hist.svg')
-    draw_dist(df, path_hist=f'{opts.data_dir}/train_over_sample/entities_hist.svg', col='over_sample_support')
+    draw_dist(df, path_hist=f'{opts.data_dir}/{out_data_dir}/entities_hist.svg')
+    draw_dist(df, path_hist=f'{opts.data_dir}/{out_data_dir}/entities_hist.svg', col='over_sample_support')
 
-    json.dump([int(e) for e in over_sample_idxs], open(f'{opts.data_dir}/train_over_sample/idx_appended.json', 'wt', encoding='utf8'))
-    # over_sample_idxs = json.load(open(f'{opts.data_dir}/train_over_sample/idx_appended.json', encoding='utf8'))
+    json.dump([int(e) for e in over_sample_idxs], open(f'{opts.data_dir}/{out_data_dir}/idx_appended.json', 'wt', encoding='utf8'))
+    # over_sample_idxs = json.load(open(f'{opts.data_dir}/{out_data_dir}/idx_appended.json', encoding='utf8'))
 
-    generate_new_data(f"{data_dir}/train_org/seq.in", f"{data_dir}/train_over_sample/seq.in", over_sample_idxs)
-    generate_new_data(f"{data_dir}/train_org/seq.out", f"{data_dir}/train_over_sample/seq.out", over_sample_idxs)
-    generate_new_data(f"{data_dir}/train_org/label", f"{data_dir}/train_over_sample/label", over_sample_idxs)
+    generate_new_data(f"{data_dir}/train_org/seq.in", f"{data_dir}/{out_data_dir}/seq.in", over_sample_idxs)
+    generate_new_data(f"{data_dir}/train_org/seq.out", f"{data_dir}/{out_data_dir}/seq.out", over_sample_idxs)
+    generate_new_data(f"{data_dir}/train_org/label", f"{data_dir}/{out_data_dir}/label", over_sample_idxs)
