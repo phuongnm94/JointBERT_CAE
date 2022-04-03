@@ -16,10 +16,21 @@ class JointBERT(BertPreTrainedModel):
         self.intent_classifier = IntentClassifier(config.hidden_size, self.num_intent_labels, args.dropout_rate)
         self.slot_classifier = SlotClassifier(config.hidden_size, self.num_slot_labels, args.dropout_rate)
         if args.combine_local_context:
-            self.local_context = NgramMLP(4, config.hidden_size)
+            self.local_context = NgramLSTM(4, config.hidden_size, dropout_rate=0.3)
+            self.context_w_gate = nn.Linear(config.hidden_size, config.hidden_size)
+            self.sigmoid_gate_f = nn.Sigmoid()
 
         if args.use_crf:
             self.crf = CRF(num_tags=self.num_slot_labels, batch_first=True)
+
+    def conbine_local_context(self, clssifier, sequence_output):
+        tmp = sequence_output.clone()[:, 1:, :]
+        sequence_output = sequence_output.clone()
+        context_gate = self.sigmoid_gate_f(self.context_w_gate(tmp))
+        sequence_output[:, 1:, :] = tmp*(1 - context_gate) +  self.local_context(tmp)*context_gate
+        slot_logits = clssifier(sequence_output)
+        return slot_logits, sequence_output
+
 
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, **kwargs):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
@@ -29,10 +40,7 @@ class JointBERT(BertPreTrainedModel):
 
         intent_logits = self.intent_classifier(pooled_output)
         if self.args.combine_local_context:
-            tmp = sequence_output.clone()[:, 1:, :]
-            sequence_output = sequence_output.clone()
-            sequence_output[:, 1:, :] =  self.local_context(tmp)
-            slot_logits = self.slot_classifier(sequence_output)
+            slot_logits, sequence_output = self.conbine_local_context(self.slot_classifier, sequence_output)
         else:
             slot_logits = self.slot_classifier(sequence_output)
 
@@ -74,12 +82,13 @@ class JointBERTSlotby2task(JointBERT):
     def __init__(self, config, args, intent_label_lst, slot_label_lst, slot_type_label_list):
         super(JointBERTSlotby2task, self).__init__(config, args, intent_label_lst, slot_label_lst) 
         self.num_slot_type_labels = len(slot_type_label_list)
-        self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels + self.num_intent_labels, args.dropout_rate)
+        self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels, args.dropout_rate)
         if args.combine_local_context:
             self.local_context = NgramLSTM(4, config.hidden_size, args.dropout_rate)
         
         # override crf layer 
         if args.use_crf:
+            self.slot_type_classifier = SlotClassifier(config.hidden_size, self.num_slot_type_labels + self.num_intent_labels, args.dropout_rate)
             self.crf = CRF(num_tags=self.num_slot_type_labels + self.num_intent_labels, batch_first=True)
     
     @staticmethod
@@ -113,6 +122,11 @@ class JointBERTSlotby2task(JointBERT):
             assert i_entity == len(slot_type_preds[i_sample])
         return new_slot_type_preds
 
+    def freeze_bert(self):
+        self.bert.requires_grad_(False)
+    def unfreeze_bert(self):
+        self.bert.requires_grad_(True)
+
     def forward(self, input_ids, attention_mask, token_type_ids, intent_label_ids, slot_labels_ids, slot_type_labels_ids):
         outputs = self.bert(input_ids, attention_mask=attention_mask,
                             token_type_ids=token_type_ids)  # sequence_output, pooled_output, (hidden_states), (attentions)
@@ -122,10 +136,7 @@ class JointBERTSlotby2task(JointBERT):
         intent_logits = self.intent_classifier(pooled_output)
         slot_logits = self.slot_classifier(sequence_output)
         if self.args.combine_local_context:
-            tmp = sequence_output.clone()[:, 1:, :]
-            sequence_output = sequence_output.clone()
-            sequence_output[:, 1:, :] = 0.5*(tmp + self.local_context(tmp)) 
-            slot_type_logits = self.slot_type_classifier(sequence_output)
+            slot_type_logits, _ = self.conbine_local_context(self.slot_type_classifier, sequence_output) 
         else:
             slot_type_logits = self.slot_type_classifier(sequence_output)
 
